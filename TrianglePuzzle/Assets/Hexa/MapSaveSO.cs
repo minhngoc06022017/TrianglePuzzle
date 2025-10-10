@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using static GridEditorWindow;
 
 [CreateAssetMenu(fileName = "MapSaveSO", menuName = "Map Editor/Map Save")]
 public class MapSaveSO : ScriptableObject
@@ -13,6 +14,7 @@ public class MapGameData
     public string mapID;
     public int width;
     public int height;
-    public List<GridEditorWindow.GroupData> groups = new();
+    public List<GroupData> groups = new();
+    public List<GroupData> fakeDataGroups = new();
     public List<Vector2Int> coloredCells = new();
 }

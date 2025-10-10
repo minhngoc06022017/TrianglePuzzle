@@ -6,8 +6,8 @@ using UnityEngine;
 public class GridEditorWindow : EditorWindow
 {
     [Header("Grid Settings")]
-    public int width = 5;
-    public int height = 5;
+    public int width = 10;
+    public int height = 10;
     public float spacingWidth = 1.05f;
     public float spacingHeight = 1.1f;
 
@@ -15,8 +15,7 @@ public class GridEditorWindow : EditorWindow
     public CellColor selectedColor = CellColor.White;
 
     private CellColor[,] grid;
-    private Vector2 scrollPos;
-
+    private CellColor[,] fakeGrid;
     // Giá trị tạm cho input
     private int tempWidth;
     private int tempHeight;
@@ -44,20 +43,41 @@ public class GridEditorWindow : EditorWindow
         tempSpacingWidth = spacingWidth;
         tempSpacingHeight = spacingHeight;
 
+        // 🔹 Auto assign MapSaveSO
+        if (mapSaveSO == null)
+        {
+            string[] guids = AssetDatabase.FindAssets("t:MapSaveSO");
+            if (guids.Length > 0)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guids[0]);
+                mapSaveSO = AssetDatabase.LoadAssetAtPath<MapSaveSO>(path);
+                Debug.Log($"Auto-loaded MapSaveSO: {mapSaveSO.name}");
+            }
+        }
+
         InitGrid();
         RefreshMapList();
     }
 
     void InitGrid()
     {
+        fakeGrid = new CellColor[width, height];
         grid = new CellColor[width, height];
+
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++)
+            {
                 grid[x, y] = CellColor.White;
+                fakeGrid[x, y] = CellColor.White;
+            }  
     }
 
+    private Vector2 _scrollPos;
     private void OnGUI()
     {
+        _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
+
+        // --- GRID SETTINGS ---
         EditorGUILayout.Space(5);
         EditorGUILayout.LabelField("Grid Settings", EditorStyles.boldLabel);
         selectedColor = (CellColor)EditorGUILayout.EnumPopup("Selected Color", selectedColor);
@@ -76,51 +96,83 @@ public class GridEditorWindow : EditorWindow
             InitGrid();
         }
 
+        // --- MAP SAVE / LOAD ---
         EditorGUILayout.Space(10);
         EditorGUILayout.LabelField("Map Save/Load", EditorStyles.boldLabel);
         mapSaveSO = (MapSaveSO)EditorGUILayout.ObjectField("Map Save SO", mapSaveSO, typeof(MapSaveSO), false);
         currentMapID = EditorGUILayout.TextField("Current Map ID", currentMapID);
 
         // Dropdown chọn map có sẵn
-        if (mapSaveSO && availableMapIDs != null && availableMapIDs.Length > 0)
+        if (mapSaveSO)
         {
-            selectedMapIndex = Mathf.Clamp(selectedMapIndex, 0, availableMapIDs.Length - 1);
-            selectedMapIndex = EditorGUILayout.Popup("Load From", selectedMapIndex, availableMapIDs);
-
-            if (GUILayout.Button("Load Selected Map", GUILayout.Height(25)))
+            if (availableMapIDs == null)
             {
-                currentMapID = availableMapIDs[selectedMapIndex];
-                LoadMap();
+                RefreshMapList();
+            }
+
+            if (availableMapIDs.Length > 0)
+            {
+                selectedMapIndex = Mathf.Clamp(selectedMapIndex, 0, availableMapIDs.Length - 1);
+                selectedMapIndex = EditorGUILayout.Popup("Load From", selectedMapIndex, availableMapIDs);
+
+                if (GUILayout.Button("Load Selected Map", GUILayout.Height(25)))
+                {
+                    currentMapID = availableMapIDs[selectedMapIndex];
+                    LoadMap();
+                }
+            }
+            else
+            {
+                EditorGUILayout.HelpBox("No maps saved yet.", MessageType.Info);
             }
         }
-        else if (mapSaveSO)
+        else
         {
             EditorGUILayout.HelpBox("No maps saved yet.", MessageType.Info);
         }
 
-        //EditorGUILayout.BeginHorizontal();
+        EditorGUILayout.BeginHorizontal();
         if (GUILayout.Button("Save Map", GUILayout.Height(25))) SaveMap();
-        //EditorGUILayout.EndHorizontal();
+        if (GUILayout.Button("Clear Current Map", GUILayout.Height(25))) ClearCurrentMap();
+        if (GUILayout.Button("Clear All Maps", GUILayout.Height(25))) ClearAllMaps();
+        EditorGUILayout.EndHorizontal();
 
+        // --- REAL BOARD ---
         EditorGUILayout.Space(10);
-        GUILayout.Label("Grid Preview", EditorStyles.boldLabel);
-        Rect gridRect = GUILayoutUtility.GetRect(position.width, position.height - 300);
-        GUI.Box(gridRect, GUIContent.none);
-        GUILayout.Space(10);
-
+        GUILayout.Label("Real Board", EditorStyles.boldLabel);
+        Rect realRect = GUILayoutUtility.GetRect(position.width - 40, height * 30f);
+        GUI.Box(realRect, GUIContent.none);
         if (grid != null)
-            DrawGrid(gridRect);
+            DrawGrid(realRect, grid);
 
-        GUILayout.Space(20);
+        // --- FAKE BOARD ---
+        EditorGUILayout.Space(20);
+        GUILayout.Label("Fake Board", EditorStyles.boldLabel);
+        Rect fakeRect = GUILayoutUtility.GetRect(position.width - 40, height * 30f);
+        GUI.Box(fakeRect, GUIContent.none);
+        if (fakeGrid != null)
+            DrawGrid(fakeRect, fakeGrid);
+
+        EditorGUILayout.Space(20);
         if (GUILayout.Button("Print Data", GUILayout.Height(25)))
             PrintData();
+
+        EditorGUILayout.EndScrollView();
     }
 
-    void DrawGrid(Rect drawArea)
+    void DrawGrid(Rect drawArea, CellColor[,] targetGrid)
     {
         Handles.BeginGUI();
-        float triSize = 30f;
-        Vector2 startPos = new Vector2(drawArea.x + 60, drawArea.y + 40);
+        float triSize = 25f; // có thể nhỏ hơn cho dễ nhìn
+
+        float totalWidth = (width - 1) * triSize * spacingWidth + triSize * 2f;
+        float totalHeight = (height - 1) * triSize * 0.85f * spacingHeight + triSize * 2f;
+
+        Vector2 startPos = new Vector2(
+            drawArea.x + (drawArea.width - totalWidth) / 2f,
+            drawArea.y + (drawArea.height - totalHeight) / 2f
+        );
+
         Event e = Event.current;
 
         for (int y = 0; y < height; y++)
@@ -137,7 +189,7 @@ public class GridEditorWindow : EditorWindow
                     : new Vector2[] { p1 + new Vector2(0, triSize), p1 + new Vector2(triSize, 0), p1 + new Vector2(-triSize, 0) };
 
                 Vector3[] p3 = System.Array.ConvertAll(points, p => (Vector3)p);
-                Handles.color = GetColor(grid[x, y]);
+                Handles.color = GetColor(targetGrid[x, y]);
                 Handles.DrawAAConvexPolygon(p3);
                 Handles.color = Color.black;
                 Handles.DrawPolyLine(p3[0], p3[1], p3[2], p3[0]);
@@ -145,11 +197,10 @@ public class GridEditorWindow : EditorWindow
                 Rect clickRect = new Rect(p1.x - triSize * 0.5f, p1.y - triSize * 0.5f, triSize, triSize);
                 if (e.type == EventType.MouseDown && clickRect.Contains(e.mousePosition))
                 {
-                    // Nếu click lại cùng màu thì reset về White
-                    if (grid[x, y] == selectedColor)
-                        grid[x, y] = CellColor.White;
+                    if (targetGrid[x, y] == selectedColor)
+                        targetGrid[x, y] = CellColor.White;
                     else
-                        grid[x, y] = selectedColor;
+                        targetGrid[x, y] = selectedColor;
 
                     Repaint();
                     e.Use();
@@ -157,6 +208,7 @@ public class GridEditorWindow : EditorWindow
                 }
             }
         }
+
         Handles.EndGUI();
     }
 
@@ -177,31 +229,33 @@ public class GridEditorWindow : EditorWindow
 
     void PrintData()
     {
-        List<GroupData> groups = GetGroups();
+        List<GroupData> groups = GetGroups(grid);
+        List<GroupData> fakeGroups = GetGroups(fakeGrid);
         Debug.Log($"Total Groups: {groups.Count}");
         foreach (var g in groups)
-            Debug.Log($"[{g.color}] => " + string.Join(", ", g.cells));
+            Debug.Log($"Real [{g.color}] => " + string.Join(", ", g.cells));
+        foreach (var g in fakeGroups)
+            Debug.Log($"Fake [{g.color}] => " + string.Join(", ", g.cells));
     }
 
     // 8 hướng + logic Hex offset
-    List<GroupData> GetGroups()
+    List<GroupData> GetGroups(CellColor[,] targetGrid)
     {
         List<GroupData> result = new();
         bool[,] visited = new bool[width, height];
 
-        Vector2Int[] dirsEven =
+        Vector2Int[] dirs =
         {
-            new(1,0), new(-1,0), new(0,1), new(0,-1),
-            new(1,1), new(1,-1), new(-1,1), new(-1,-1)
-        };
+        new(1,0), new(-1,0), new(0,1), new(0,-1),
+        new(1,1), new(1,-1), new(-1,1), new(-1,-1)
+    };
 
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
             {
                 if (visited[x, y]) continue;
-
-                CellColor color = grid[x, y];
+                var color = targetGrid[x, y];
                 if (color == CellColor.White) continue;
 
                 List<Vector2Int> cells = new();
@@ -214,14 +268,12 @@ public class GridEditorWindow : EditorWindow
                     var cur = q.Dequeue();
                     cells.Add(cur);
 
-                    foreach (var d in dirsEven)
+                    foreach (var d in dirs)
                     {
-                        int nx = cur.x + d.x;
-                        int ny = cur.y + d.y;
+                        int nx = cur.x + d.x, ny = cur.y + d.y;
                         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-
                         if (visited[nx, ny]) continue;
-                        if (!CanConnect(grid[cur.x, cur.y], grid[nx, ny])) continue;
+                        if (!CanConnect(targetGrid[cur.x, cur.y], targetGrid[nx, ny])) continue;
 
                         visited[nx, ny] = true;
                         q.Enqueue(new Vector2Int(nx, ny));
@@ -231,6 +283,7 @@ public class GridEditorWindow : EditorWindow
                 result.Add(new GroupData { color = color, cells = cells });
             }
         }
+
         return result;
     }
 
@@ -251,7 +304,8 @@ public class GridEditorWindow : EditorWindow
             return;
         }
 
-        var groups = GetGroups();
+        var groups = GetGroups(grid);
+        var fakeGroups = GetGroups(fakeGrid);
         var coloredCells = new List<Vector2Int>();
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++)
@@ -265,6 +319,7 @@ public class GridEditorWindow : EditorWindow
             existing.height = height;
             existing.groups = groups;
             existing.coloredCells = coloredCells;
+            existing.fakeDataGroups = fakeGroups;
         }
         else
         {
@@ -274,7 +329,8 @@ public class GridEditorWindow : EditorWindow
                 width = width,
                 height = height,
                 groups = groups,
-                coloredCells = coloredCells
+                coloredCells = coloredCells,
+                fakeDataGroups = fakeGroups
             });
         }
 
@@ -310,6 +366,48 @@ public class GridEditorWindow : EditorWindow
 
         Debug.Log($"✅ Loaded Map: {currentMapID}");
         Repaint();
+    }
+
+    void ClearCurrentMap()
+    {
+        if (!mapSaveSO)
+        {
+            Debug.LogError("❌ Chưa gán MapSaveSO!");
+            return;
+        }
+
+        int index = mapSaveSO.maps.FindIndex(m => m.mapID == currentMapID);
+        if (index >= 0)
+        {
+            mapSaveSO.maps.RemoveAt(index);
+            EditorUtility.SetDirty(mapSaveSO);
+            AssetDatabase.SaveAssets();
+            RefreshMapList();
+            Debug.Log($"🗑 Cleared current map: {currentMapID}");
+        }
+        else
+        {
+            Debug.LogWarning($"⚠ Không tìm thấy mapID {currentMapID}");
+        }
+    }
+
+    void ClearAllMaps()
+    {
+        if (!mapSaveSO)
+        {
+            Debug.LogError("❌ Chưa gán MapSaveSO!");
+            return;
+        }
+
+        if (EditorUtility.DisplayDialog("Xóa tất cả map?",
+            "Bạn có chắc muốn xóa toàn bộ dữ liệu map trong SO này?", "Xóa hết", "Hủy"))
+        {
+            mapSaveSO.maps.Clear();
+            EditorUtility.SetDirty(mapSaveSO);
+            AssetDatabase.SaveAssets();
+            RefreshMapList();
+            Debug.Log("🧹 Đã xóa toàn bộ maps trong MapSaveSO!");
+        }
     }
 
     void RefreshMapList()
