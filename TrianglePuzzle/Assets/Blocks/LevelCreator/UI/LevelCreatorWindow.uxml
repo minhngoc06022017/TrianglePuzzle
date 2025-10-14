@@ -1,0 +1,52 @@
+<UXML xmlns:engine="UnityEngine.UIElements" xmlns:editor="UnityEditor.UIElements">
+
+    <engine:ScrollView class="window">
+
+        <engine:Box class="box">
+			<engine:TextElement text="Settings" />
+			<engine:VisualElement class="line" />
+            <editor:EnumField name="levelType" label="Level Type" />
+			<engine:Toggle name="rotateHexagon" label="Rotate Hexagon"/>
+            <editor:IntegerField name="xCells" label="X Cells" value="1"/>
+            <editor:IntegerField name="yCells" label="Y Cells" value="1"/>
+            <editor:IntegerField name="numShapes" label="Number Of Shapes" value="1"/>
+        </engine:Box>
+
+		<engine:Box class="box">
+            <engine:VisualElement name="shapesContainer" />
+        </engine:Box>
+
+        <engine:Box class="box">
+            <engine:VisualElement name="gridContainer" class="grid-container" />
+			<engine:Button name="clearShapesButton" text="Clear Shapes" />
+			<engine:Button name="resetGridButton" text="Reset Grid" />
+        </engine:Box>
+
+		<engine:Box class="box">
+			<engine:TextElement text="Export" />
+			<engine:VisualElement class="line" />
+		 	<engine:TextField name="filename" label="Filename" />
+            <editor:ObjectField name="outputFolder" label="Ouput Folder" allow-scene-objects="false" />
+			<engine:Box name="outputFolderErrorContainer" class="info-box error-box">
+				<engine:TextElement class="error-text" text="The Output Folder needs to be a folder from your project window. Please drag a folder from your project window into the Output Folder field." />
+			</engine:Box>
+			<engine:Box class="info-box">
+				<engine:TextElement name="outputFolderPath" />
+			</engine:Box>
+			<engine:Button name="export" text="Export" />
+        </engine:Box>
+
+		<engine:Box class="box">
+			<engine:TextElement text="Auto Generation" />
+			<engine:VisualElement class="line" />
+		 	<editor:IntegerField name="minShapeSize" label="Min Shape Size" value="1"/>
+			<editor:IntegerField name="maxShapeSize" label="Max Shape Size" value="1"/>
+            <engine:Button name="autoFillShapes" text="Auto Fill Shapes" />
+			<engine:VisualElement class="spacer" />
+			<editor:IntegerField name="numLevels" label="Number of Levels" value="1"/>
+            <engine:Button name="generateBatch" text="Generate Batch" />
+        </engine:Box>
+
+    </engine:ScrollView>
+
+</UXML>
