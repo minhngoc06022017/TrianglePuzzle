@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 using UnityEditor;
 using UnityEngine;
@@ -41,7 +41,8 @@ namespace BBG.Blocks
 		private Texture triangleTexture;
 		private Texture hexagonTexture;
 
-		private List<List<GridCell>>	grid;
+		private List<string> Levels;
+        private List<List<GridCell>>	grid;
 		private GridCell				hoveredGridCell;
 		private bool					isDragging;
 		private List<VisualElement>		shapeBlocks;
@@ -98,8 +99,8 @@ namespace BBG.Blocks
 			set { LevelCreatorData.Instance.numShapes = value; }
 		}
 
-		// Export fields
-		private TextField		FilenameField			{ get { return rootVisualElement.Q("filename") as TextField; } }
+        // Export fields
+        private TextField		FilenameField			{ get { return rootVisualElement.Q("filename") as TextField; } }
 		private ObjectField		OutputFolderField		{ get { return rootVisualElement.Q("outputFolder") as ObjectField; } }
 
 		private string Filename
@@ -252,17 +253,25 @@ namespace BBG.Blocks
 			XCellsField.RegisterCallback<ChangeEvent<int>>(XYCellsChanged);
 			YCellsField.RegisterCallback<ChangeEvent<int>>(XYCellsChanged);
 			NumShapesField.RegisterCallback<ChangeEvent<int>>(NumShapesChanged);
-			OutputFolderField.RegisterCallback<ChangeEvent<Object>>((evt) => { UpdateOutputPaths(); });
-			FilenameField.RegisterCallback<ChangeEvent<string>>((evt) => { UpdateOutputPaths(); });
+			OutputFolderField.RegisterCallback<ChangeEvent<Object>>((evt) => { 
+				UpdateOutputPaths();
+                LoadLevelsFromFolder();
+                RefreshLevelListUI();
+            });
+
+			CreateLevelListField();
+
+            FilenameField.RegisterCallback<ChangeEvent<string>>((evt) => { UpdateOutputPaths(); });
 			MinShapeSizeField.RegisterCallback<ChangeEvent<int>>(MinMaxCellsChanged);
 			MaxShapeSizeField.RegisterCallback<ChangeEvent<int>>(MinMaxCellsChanged);
 
 			// Setup button click listeners
 			(rootVisualElement.Q("clearShapesButton") as Button).clickable.clicked	+= ClearShapes;
-			(rootVisualElement.Q("resetGridButton") as Button).clickable.clicked	+= ResetGrid;
+			(rootVisualElement.Q("resetGridButton") as Button).clickable.clicked	+= OnResetGridBtn;
 			(rootVisualElement.Q("autoFillShapes") as Button).clickable.clicked		+= AutoFill;
 			(rootVisualElement.Q("export") as Button).clickable.clicked				+= ExportClicked;
-			(rootVisualElement.Q("generateBatch") as Button).clickable.clicked		+= GenerateBatch;
+            (rootVisualElement.Q("loadMapButton") as Button).clickable.clicked += LoadMapClicked;
+            (rootVisualElement.Q("generateBatch") as Button).clickable.clicked		+= GenerateBatch;
 
 			// Bind the UI elements to the LevelCreatorData ScriptableObject fields
 			XCellsField.bindingPath			= "xCells";
@@ -272,8 +281,9 @@ namespace BBG.Blocks
 			MinShapeSizeField.bindingPath	= "minShapeSize";
 			MaxShapeSizeField.bindingPath	= "maxShapeSize";
 			NumberOfLevelsField.bindingPath	= "numLevels";
+			//LevelListField.bindingPath = "mapLevels";
 
-			MinShapeSizeField.isDelayed = true;
+            MinShapeSizeField.isDelayed = true;
 			MaxShapeSizeField.isDelayed = true;
 
 			// Bind the root element to the instance of LevelCreatorData
@@ -305,7 +315,173 @@ namespace BBG.Blocks
 			RotateHexagonField.style.display = (LevelType == LevelData.LevelType.Hexagon) ? DisplayStyle.Flex : DisplayStyle.None;
 		}
 
-		private void LevelTypeChanged(ChangeEvent<System.Enum> evt)
+        #region Extend
+
+        private DropdownField LevelListField;
+
+        private void SetupLevelListField()
+        {
+            // Lấy phần tử đầu tiên làm mặc định
+            string defaultValue = Levels[0];
+
+            // Khởi tạo DropdownField
+            LevelListField = new DropdownField("Select Level", Levels, defaultValue)
+            {
+                name = "levelList"  // <--- quan trọng phải set name
+            };
+
+            // Thêm style nếu muốn
+            LevelListField.style.marginTop = 5;
+            LevelListField.style.marginBottom = 5;
+            // Thêm vào UI dưới export box
+            var exportBox = rootVisualElement.Q<Box>("exportBox"); // đổi tên box export nếu cần
+            exportBox.Add(LevelListField);
+
+            if (LevelListField != null)
+            {
+                LevelListField.RegisterCallback<ChangeEvent<string>>((evt) =>
+                {
+                    Debug.Log("Level selected: " + evt.newValue);
+                    // Bạn có thể gọi LoadLevelMap(evt.newValue) nếu muốn load ngay
+                });
+            }
+            else
+            {
+                Debug.LogWarning("LevelListField is null, cannot register callback.");
+            }
+        }
+
+        private void LoadLevelMap(string filename)
+        {
+            string folder = GetOutputFolderAssetPath();
+            string fullPath = Application.dataPath + folder.Substring("Assets".Length) + "/" + filename;
+
+            if (!System.IO.File.Exists(fullPath))
+            {
+                Debug.LogError("File not found: " + fullPath);
+                return;
+            }
+
+            string contents = System.IO.File.ReadAllText(fullPath);
+            string[] parts = contents.Split(',');
+
+            if (parts.Length < 5)
+            {
+                Debug.LogError("Invalid level file");
+                return;
+            }
+
+            int index = 0;
+
+            // Bỏ timestamp
+            index++;
+
+            LevelType = (LevelData.LevelType)int.Parse(parts[index++]);
+            RotateHexagon = bool.Parse(parts[index++]);
+            int yCells = int.Parse(parts[index++]);
+            int xCells = int.Parse(parts[index++]);
+
+            // Parse grid
+            List<List<int>> grid = new List<List<int>>();
+
+            for (int y = 0; y < yCells; y++)
+            {
+                List<int> row = new List<int>();
+                for (int x = 0; x < xCells; x++)
+                {
+                    row.Add(int.Parse(parts[index++]));
+                }
+                grid.Add(row);
+            }
+
+            // Cập nhật lại UI & Data
+            UpdateDataMap(LevelType, RotateHexagon, xCells, yCells, grid);
+
+            // Update UI fields
+            XCellsField.value = xCells;
+            YCellsField.value = yCells;
+            RotateHexagonField.value = RotateHexagon;
+        }
+
+        private void UpdateDataMap(LevelData.LevelType levelType, bool rotateHex, int xCells, int yCells, List<List<int>> gridValues)
+        {
+            LevelCreatorData.Instance.levelType = levelType;
+            LevelCreatorData.Instance.rotateHexagon = rotateHex;
+            LevelCreatorData.Instance.xCells = xCells;
+            LevelCreatorData.Instance.yCells = yCells;
+
+			ResetGrid(gridValues);
+        }
+
+        private void RefreshLevelListUI()
+        {
+			if(Levels.Count == 0)
+			{
+                // Xóa DropdownField cũ nếu tồn tại
+                var oldField = rootVisualElement.Q<DropdownField>("levelList");
+                if (oldField != null)
+                    oldField.RemoveFromHierarchy();
+				LevelListField = null;
+				return;
+            }
+
+            if (LevelListField == null)
+			{
+				CreateLevelListField();
+                return;
+			}
+
+            LevelListField.choices = Levels;
+
+            if (Levels.Count > 0)
+                LevelListField.value = Levels[0];
+        }
+
+		private void CreateLevelListField()
+		{
+            if (Levels.Count == 0)
+            {
+                return;
+            }
+
+            SetupLevelListField();
+        }
+
+        private void LoadLevelsFromFolder()
+        {
+            Levels.Clear();
+
+            string folder = GetOutputFolderAssetPath();
+            if (!folder.StartsWith("Assets/Blocks/AssetFiles/LevelFiles/"))
+                return;
+
+            string fullFolderPath = Application.dataPath + folder.Substring("Assets".Length);
+
+            if (!System.IO.Directory.Exists(fullFolderPath))
+                return;
+
+            string[] files = System.IO.Directory.GetFiles(fullFolderPath, "*.txt");
+
+            foreach (string f in files)
+            {
+                Levels.Add(System.IO.Path.GetFileName(f));  // ví dụ: level 1.txt
+            }
+        }
+
+		private void LoadMapClicked()
+		{
+			if (Levels.Count == 0 || LevelListField == null || string.IsNullOrEmpty(LevelListField.value))
+            {
+                Debug.LogError("No level selected!");
+                return;
+            }
+
+            LoadLevelMap(LevelListField.value);
+        }
+
+        #endregion
+
+        private void LevelTypeChanged(ChangeEvent<System.Enum> evt)
 		{
 			// There is a bug with binding enums, need to manually set it when it changes
 			LevelType = (LevelData.LevelType)LevelTypeField.value;
@@ -451,17 +627,24 @@ namespace BBG.Blocks
 			UpdateGridCellColors();
 		}
 
-		private void ResetGrid()
+		private void OnResetGridBtn()
 		{
-			RebuildGridCells();
+			ResetGrid();
+        }
+
+		private void ResetGrid(List<List<int>> _inputData = null)
+		{
+			RebuildGridCells(_inputData);
 			ResizeGrid();
 		}
 
-		private void RebuildGridCells()
+		private void RebuildGridCells(List<List<int>> _inputData = null)
 		{
 			VisualElement gridContainer = GridContainerElement;
 
-			gridContainer.Clear();
+			bool _hasInputData = _inputData != null && _inputData.Count > 0;
+
+            gridContainer.Clear();
 			grid.Clear();
 
 			int					xCells		= XCells;
@@ -502,8 +685,21 @@ namespace BBG.Blocks
 
 					gridCell.row		= y;
 					gridCell.col		= x;
-					gridCell.imageField	= cellImage;
-					gridCell.shapeIndex = EmptyCellShapeIndex; // Default to the white color
+
+					if (_hasInputData)
+					{
+                        gridCell.imageField = cellImage;
+
+						int _index = _inputData[y][x];
+
+						gridCell.shapeIndex = _index;
+                        cellImage.tintColor = GetShapeColor(_index);
+                    }
+					else
+					{
+                        gridCell.imageField = cellImage;
+                        gridCell.shapeIndex = EmptyCellShapeIndex; // Default to the white color
+                    }
 
 					grid[y].Add(gridCell);
 				}
@@ -725,25 +921,26 @@ namespace BBG.Blocks
 				}
 				case LevelData.LevelType.Triangle:
 				{
-					bool upsideDown = (x + y) % 2 != 0;
+                        // Tam giác đều - xếp sát nhau
+                        float xPos = x * (cellWidth / 2f);
+                        float yPos = y * cellHeight;
 
-					float xPos = x * (cellWidth / 2f);
-					float yPos = y * cellHeight;
+                        // Hàng lẻ shift sang phải nửa cell
+                        if (y % 2 != 0)
+                        {
+                            xPos += cellWidth / 2f;
+                        }
 
-					if (upsideDown)
-					{
-						// If it's an upside down triangle then rotate it by 180 degrees
-						Quaternion rotation = new Quaternion();
-						rotation.eulerAngles = new Vector3(0, 0, 180);
-						cell.transform.rotation = rotation;
+                        // Xác định lật tam giác (xoay 180)
+                        bool upsideDown = (x + y) % 2 != 0;
+                        if (upsideDown)
+                            cell.transform.rotation = Quaternion.Euler(0, 0, 180);
+                        else
+                            cell.transform.rotation = Quaternion.identity;
 
-						// Need to re-position because the pivot point is in the top left corner
-						xPos += cellWidth;
-						yPos += cellHeight;
-					}
+                        cell.transform.position = new Vector3(xPos, yPos, 0f);
 
-					cell.transform.position = new Vector3(xPos, yPos, 0f);
-					break;
+                        break;
 				}
 				case LevelData.LevelType.Hexagon:
 				{
@@ -765,7 +962,7 @@ namespace BBG.Blocks
 						xPos += cellWidth;
 
 						cell.transform.position = new Vector3(xPos, yPos, 0f);
-					}
+                        }
 					else
 					{
 						float xPos = x * cellWidth - cellWidth / 4f;
@@ -782,8 +979,10 @@ namespace BBG.Blocks
 						cell.transform.rotation = rotation;
 
 						cell.transform.position = new Vector3(xPos, yPos, 0f);
-					}
-					break;
+                        }
+
+                        
+                        break;
 				}
 			}
 		}
@@ -856,58 +1055,113 @@ namespace BBG.Blocks
 				gridCell.imageField.tintColor	= GetShapeColor(selectedShapeIndex);
 				gridCell.shapeIndex				= selectedShapeIndex;
 
-				ValidateMinMaxShapeSize();
 			}
-		}
+			else
+			{
+                gridCell.imageField.tintColor = GetShapeColor(EmptyCellShapeIndex);
+                gridCell.shapeIndex = EmptyCellShapeIndex;
+            }
+
+            ValidateMinMaxShapeSize();
+        }
 
 		/// <summary>
 		/// Gets the closest grid cell to the given mouse position
 		/// </summary>
 		private GridCell GetClosestCell(Vector2 mousePosition)
 		{
-			int					xCells		= XCells;
-			int					yCells		= YCells;
-			LevelData.LevelType	levelType	= LevelType;
+            if (LevelType == LevelData.LevelType.Triangle)
+                return GetClosestCell_Triangle(mousePosition);
 
-			int		targetX		= 0;
-			int		targetY		= 0;
-			float	minDistance	= float.MaxValue;
+            return GetClosestCell_Default(mousePosition);
+        }
 
-			for (int y = 0; y < yCells; y++)
-			{
-				for (int x = 0; x < xCells; x++)
-				{
-					Image	gridCell	= grid[y][x].imageField;
-					Vector2	cellMiddle	= gridCell.transform.position;
+        private GridCell GetClosestCell_Triangle(Vector2 mousePosition)
+        {
+            int xCells = XCells;
+            int yCells = YCells;
 
-					cellMiddle.x += gridCell.style.width.value.value / 2f;
-					cellMiddle.y += gridCell.style.height.value.value / 2f;
+            float minDistance = float.MaxValue;
+            int targetX = 0;
+            int targetY = 0;
 
-					if (levelType == LevelData.LevelType.Triangle && (x + y) % 2 == 1)
-					{
-						cellMiddle.x -= gridCell.style.width.value.value ;
-						cellMiddle.y -= gridCell.style.height.value.value ;
-					}
-					else if (levelType == LevelData.LevelType.Hexagon && RotateHexagon)
-					{
-						cellMiddle.x -= gridCell.style.width.value.value;
-					}
+            for (int y = 0; y < yCells; y++)
+            {
+                for (int x = 0; x < xCells; x++)
+                {
+                    Image gridCell = grid[y][x].imageField;
 
-					float distance = Vector2.Distance(cellMiddle, mousePosition);
+                    float cellWidth = gridCell.style.width.value.value;
+                    float cellHeight = gridCell.style.height.value.value;
 
-					if (distance < minDistance)
-					{
-						targetX		= x;
-						targetY		= y;
-						minDistance = distance;
-					}
-				}
-			}
+                    // ===== Logic vẽ mới (KHÔNG offset upsideDown) =====
+                    float xPos = x * (cellWidth / 2f);
+                    float yPos = y * cellHeight;
 
-			return grid[targetY][targetX];
-		}
+                    if (y % 2 != 0)               // stagger hàng lẻ
+                        xPos += cellWidth / 2f;
 
-		private void SetHover(GridCell gridCell, bool isHovered)
+                    // Center
+                    Vector2 cellMiddle = new Vector2(
+                        xPos + cellWidth / 2f,
+                        yPos + cellHeight / 2f
+                    );
+
+                    float distance = Vector2.Distance(cellMiddle, mousePosition);
+                    if (distance < minDistance)
+                    {
+                        minDistance = distance;
+                        targetX = x;
+                        targetY = y;
+                    }
+                }
+            }
+
+            return grid[targetY][targetX];
+        }
+
+        private GridCell GetClosestCell_Default(Vector2 mousePosition)
+        {
+            int xCells = XCells;
+            int yCells = YCells;
+            LevelData.LevelType levelType = LevelType;
+
+            float minDistance = float.MaxValue;
+            int targetX = 0;
+            int targetY = 0;
+
+            for (int y = 0; y < yCells; y++)
+            {
+                for (int x = 0; x < xCells; x++)
+                {
+                    Image gridCell = grid[y][x].imageField;
+                    Vector2 cellMiddle = gridCell.transform.position;
+
+                    float w = gridCell.style.width.value.value;
+                    float h = gridCell.style.height.value.value;
+
+                    cellMiddle.x += w / 2f;
+                    cellMiddle.y += h / 2f;
+
+                    // giữ nguyên logic cũ
+                    if (levelType == LevelData.LevelType.Hexagon && RotateHexagon)
+                        cellMiddle.x -= w;
+
+                    float distance = Vector2.Distance(cellMiddle, mousePosition);
+
+                    if (distance < minDistance)
+                    {
+                        minDistance = distance;
+                        targetX = x;
+                        targetY = y;
+                    }
+                }
+            }
+
+            return grid[targetY][targetX];
+        }
+
+        private void SetHover(GridCell gridCell, bool isHovered)
 		{
 			if (isHovered)
 			{
@@ -936,7 +1190,15 @@ namespace BBG.Blocks
 			}
 			else
 			{
-				color = shapeColors[shapeIndex];
+				if(shapeColors.Count > 0)
+				{
+                    if (shapeIndex >= shapeColors.Count)
+                    {
+                        shapeIndex = shapeColors.Count - 1;
+                    }
+
+                    color = shapeColors[shapeIndex];
+                }
 			}
 
 			return color;

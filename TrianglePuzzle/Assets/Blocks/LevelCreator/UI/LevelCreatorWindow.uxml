@@ -22,7 +22,7 @@
 			<engine:Button name="resetGridButton" text="Reset Grid" />
         </engine:Box>
 
-		<engine:Box class="box">
+		<engine:Box class="box" name="exportBox">
 			<engine:TextElement text="Export" />
 			<engine:VisualElement class="line" />
 		 	<engine:TextField name="filename" label="Filename" />
@@ -34,6 +34,7 @@
 				<engine:TextElement name="outputFolderPath" />
 			</engine:Box>
 			<engine:Button name="export" text="Export" />
+			<engine:Button name="loadMapButton" text="LoadMapButton" />
         </engine:Box>
 
 		<engine:Box class="box">
