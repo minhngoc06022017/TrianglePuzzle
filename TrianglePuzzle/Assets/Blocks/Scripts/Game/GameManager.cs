@@ -345,7 +345,7 @@ namespace BBG.Blocks
 		/// <summary>
 		/// Checks if the active level is completed by checking that all shapes have been placed
 		/// </summary>
-		private bool CheckActiveLevelCompleted()
+		private bool CheckActiveLevelCompleted() // Level complete
 		{
 			for (int i = 0; i < ActiveLevelSaveData.placedCellPositions.Count; i++)
 			{

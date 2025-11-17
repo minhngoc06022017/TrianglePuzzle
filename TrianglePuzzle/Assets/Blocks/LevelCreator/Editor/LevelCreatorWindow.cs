@@ -1,9 +1,9 @@
-﻿using System.Collections.Generic;
-
+﻿using System;
+using System.Collections.Generic;
 using UnityEditor;
+using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
-using UnityEditor.UIElements;
 
 namespace BBG.Blocks
 {
@@ -43,7 +43,8 @@ namespace BBG.Blocks
 
 		private List<string> Levels;
         private List<List<GridCell>>	grid;
-		private GridCell				hoveredGridCell;
+        private List<List<GridCell>>	gridFake;
+        private GridCell				hoveredGridCell;
 		private bool					isDragging;
 		private List<VisualElement>		shapeBlocks;
 		private List<Color>				shapeColors;
@@ -60,7 +61,8 @@ namespace BBG.Blocks
 
 		// Containers
 		private VisualElement	GridContainerElement	{ get { return rootVisualElement.Q("gridContainer") as VisualElement; } }
-		private VisualElement	ShapesContainerElement	{ get { return rootVisualElement.Q("shapesContainer") as VisualElement; } }
+		private VisualElement	GridFakeContainerElement	{ get { return rootVisualElement.Q("gridFakeContainer") as VisualElement; } }
+        private VisualElement	ShapesContainerElement	{ get { return rootVisualElement.Q("shapesContainer") as VisualElement; } }
 
 		// Settings fields
 		private EnumField		LevelTypeField			{ get { return rootVisualElement.Q("levelType") as EnumField; } }
@@ -157,8 +159,10 @@ namespace BBG.Blocks
 		private void OnEnable()
 		{
 			grid				= new List<List<GridCell>>();
+			gridFake			= new List<List<GridCell>>();
 			shapeColors			= new List<Color>();
 			shapeBlocks			= new List<VisualElement>();
+			Levels				= new List<string>();
 
 			SetupWindowUI();
 		}
@@ -178,7 +182,7 @@ namespace BBG.Blocks
 						return;
 					}
 
-					AutoGenerationWorkerFinished();
+					AutoGenerationWorkerFinished(grid);
 
 					return;
 				}
@@ -240,11 +244,15 @@ namespace BBG.Blocks
 			LevelTypeField.Init(LevelCreatorData.Instance.levelType);
 
 			// Set the accepted type of the output folder object field to Object, we will check if it is actually a folder when the user drags something into the field
-			OutputFolderField.objectType = typeof(Object);
+			OutputFolderField.objectType = typeof(UnityEngine.Object);
 
 			// Register a GeometryChangedEvent on the grid-container VisualElement so when it re-sizes we can update the size of the cells
 			// This will be called once right away when the window first opens and sizes itself
-			rootVisualElement.RegisterCallback<GeometryChangedEvent>((evt) => { ResizeGrid(); });
+			rootVisualElement.RegisterCallback<GeometryChangedEvent>((evt) => 
+			{ 
+				ResizeGrid(0);
+                ResizeGrid(1);
+            });
 			rootVisualElement.RegisterCallback<GeometryChangedEvent>((evt) => { ResizeShapeBlocks(); });
 
 			// Register value changed events
@@ -253,7 +261,7 @@ namespace BBG.Blocks
 			XCellsField.RegisterCallback<ChangeEvent<int>>(XYCellsChanged);
 			YCellsField.RegisterCallback<ChangeEvent<int>>(XYCellsChanged);
 			NumShapesField.RegisterCallback<ChangeEvent<int>>(NumShapesChanged);
-			OutputFolderField.RegisterCallback<ChangeEvent<Object>>((evt) => { 
+			OutputFolderField.RegisterCallback<ChangeEvent<UnityEngine.Object>>((evt) => { 
 				UpdateOutputPaths();
                 LoadLevelsFromFolder();
                 RefreshLevelListUI();
@@ -266,7 +274,7 @@ namespace BBG.Blocks
 			MaxShapeSizeField.RegisterCallback<ChangeEvent<int>>(MinMaxCellsChanged);
 
 			// Setup button click listeners
-			(rootVisualElement.Q("clearShapesButton") as Button).clickable.clicked	+= ClearShapes;
+			(rootVisualElement.Q("clearShapesButton") as Button).clickable.clicked	+= ClearAllShapes;
 			(rootVisualElement.Q("resetGridButton") as Button).clickable.clicked	+= OnResetGridBtn;
 			(rootVisualElement.Q("autoFillShapes") as Button).clickable.clicked		+= AutoFill;
 			(rootVisualElement.Q("export") as Button).clickable.clicked				+= ExportClicked;
@@ -292,7 +300,7 @@ namespace BBG.Blocks
 			// Set the reference to the output folder
 			if (!string.IsNullOrEmpty(OutputFolderAssetPath))
 			{
-				Object outputFolder = AssetDatabase.LoadAssetAtPath<Object>(OutputFolderAssetPath);
+				UnityEngine.Object outputFolder = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(OutputFolderAssetPath);
 
 				// Check if the folder still exists
 				if (outputFolder == null)
@@ -307,9 +315,10 @@ namespace BBG.Blocks
 			GenerateShapeColors();
 
 			// Build the initial grid cells matrix
-			RebuildGridCells();
+			RebuildGridCells(0);
+			RebuildGridCells(1);
 
-			UpdateOutputPaths();
+            UpdateOutputPaths();
 
 			RotateHexagonField.value = RotateHexagon;
 			RotateHexagonField.style.display = (LevelType == LevelData.LevelType.Hexagon) ? DisplayStyle.Flex : DisplayStyle.None;
@@ -410,7 +419,8 @@ namespace BBG.Blocks
             LevelCreatorData.Instance.xCells = xCells;
             LevelCreatorData.Instance.yCells = yCells;
 
-			ResetGrid(gridValues);
+			ResetGrid(0, gridValues);
+			ResetGrid(1);
         }
 
         private void RefreshLevelListUI()
@@ -489,16 +499,17 @@ namespace BBG.Blocks
 			// If Hexagon level type was selected show the Rotate Hexagon field
 			RotateHexagonField.style.display = (LevelType == LevelData.LevelType.Hexagon) ? DisplayStyle.Flex : DisplayStyle.None;
 
-			RebuildGridCells();
-			ResizeGrid();
-		}
+            ResetGrid(0);
+            ResetGrid(1);
+        }
 
 		private void RotateHexagonChanged(ChangeEvent<bool> evt)
 		{
 			RotateHexagon = RotateHexagonField.value;
 
-			ResizeGrid();
-		}
+			ResizeGrid(0);
+            ResizeGrid(1);
+        }
 
 		private void XYCellsChanged(ChangeEvent<int> evt)
 		{
@@ -507,9 +518,9 @@ namespace BBG.Blocks
 			XCells				= XCellsField.value;
 			YCells				= YCellsField.value;
 
-			RebuildGridCells();
-			ResizeGrid();
-		}
+            ResetGrid(0);
+            ResetGrid(1);
+        }
 
 		private void NumShapesChanged(ChangeEvent<int> evt)
 		{
@@ -520,7 +531,7 @@ namespace BBG.Blocks
 
 			ValidateMinMaxShapeSize();
 			GenerateShapeColors();
-			UpdateGridCellColors();
+			UpdateGridCellColors(grid);
 			ResizeShapeBlocks();
 		}
 
@@ -605,7 +616,13 @@ namespace BBG.Blocks
 			(rootVisualElement.Q("outputFolderPath") as TextElement).text = "Output path: " + GetOutputFileAssetPath(GetOutputFolderAssetPath());
 		}
 
-		private void ClearShapes()
+		private void ClearAllShapes()
+		{
+			ClearShapes(grid);
+			ClearShapes(gridFake);
+        }
+
+		private void ClearShapes(List<List<GridCell>> _grid)
 		{
 			int xCells = XCells;
 			int yCells = YCells;
@@ -614,7 +631,7 @@ namespace BBG.Blocks
 			{
 				for (int x = 0; x < xCells; x++)
 				{
-					GridCell gridCell = grid[y][x];
+					GridCell gridCell = _grid[y][x];
 
 					// Set any shape index that is above the empty shape index (IE all the colors) back to the empty shape index
 					if (gridCell.shapeIndex > EmptyCellShapeIndex)
@@ -624,28 +641,35 @@ namespace BBG.Blocks
 				}
 			}
 
-			UpdateGridCellColors();
+			UpdateGridCellColors(_grid);
 		}
 
 		private void OnResetGridBtn()
 		{
-			ResetGrid();
+			ResetGrid(0);
+			ResetGrid(1);
         }
 
-		private void ResetGrid(List<List<int>> _inputData = null)
+		private void ResetGrid(int _type, List<List<int>> _inputData = null)
 		{
-			RebuildGridCells(_inputData);
-			ResizeGrid();
+			RebuildGridCells(_type, _inputData);
+			ResizeGrid(_type);
 		}
 
-		private void RebuildGridCells(List<List<int>> _inputData = null)
+		private void RebuildGridCells(int _type, List<List<int>> _inputData = null)
 		{
-			VisualElement gridContainer = GridContainerElement;
-
 			bool _hasInputData = _inputData != null && _inputData.Count > 0;
 
+			VisualElement gridContainer = GridContainerElement;
+			List<List<GridCell>> _grid = grid;
+			if(_type == 1)
+			{
+				gridContainer = GridFakeContainerElement;
+				_grid = gridFake;
+            }
+
             gridContainer.Clear();
-			grid.Clear();
+            _grid.Clear();
 
 			int					xCells		= XCells;
 			int					yCells		= YCells;
@@ -657,11 +681,19 @@ namespace BBG.Blocks
 			// Create a container that all the cells will be added to
 			VisualElement gridCellContainer = new VisualElement();
 
-			gridCellContainer.name = "gridCellContainer";
-
-			gridCellContainer.RegisterCallback<MouseMoveEvent>(OnMouseMoved);
+			if(_type == 0)
+			{
+                gridCellContainer.name = "gridCellContainer";
+                gridCellContainer.RegisterCallback<MouseMoveEvent>(OnMouseMovedGrid);
+                gridCellContainer.RegisterCallback<MouseDownEvent>(OnMouseDownGrid);
+            }
+			else if(_type == 1)
+			{
+                gridCellContainer.name = "gridCellFakeContainer";
+                gridCellContainer.RegisterCallback<MouseMoveEvent>(OnMouseMovedGridFake);
+                gridCellContainer.RegisterCallback<MouseDownEvent>(OnMouseDownGridFake);
+            }
 			gridCellContainer.RegisterCallback<MouseLeaveEvent>(OnMouseLeave);
-			gridCellContainer.RegisterCallback<MouseDownEvent>(OnMouseDown);
 			gridCellContainer.RegisterCallback<MouseUpEvent>(OnMouseUp);
 
 			// Add the cell container to the grid container, the cell container will be centered because of grid-containers uss styling
@@ -669,7 +701,7 @@ namespace BBG.Blocks
 
 			for (int y = 0; y < yCells; y++)
 			{
-				grid.Add(new List<GridCell>());
+                _grid.Add(new List<GridCell>());
 
 				for (int x = 0; x < xCells; x++)
 				{
@@ -701,18 +733,24 @@ namespace BBG.Blocks
                         gridCell.shapeIndex = EmptyCellShapeIndex; // Default to the white color
                     }
 
-					grid[y].Add(gridCell);
+                    _grid[y].Add(gridCell);
 				}
 			}
 
 			ValidateMinMaxShapeSize();
 		}
 
-		private void ResizeGrid()
+		private void ResizeGrid(int _type)
 		{
-			VisualElement gridContainer = GridContainerElement;
+            VisualElement gridContainer = GridContainerElement;
+            List<List<GridCell>> _grid = grid;
+            if (_type == 1)
+            {
+                gridContainer = GridFakeContainerElement;
+                _grid = gridFake;
+            }
 
-			int					xCells		= XCells;
+            int					xCells		= XCells;
 			int					yCells		= YCells;
 			LevelData.LevelType	levelType	= LevelType;
 
@@ -724,16 +762,25 @@ namespace BBG.Blocks
 			GetCellSize(levelType, maxCellSize, out cellWidth, out cellHeight);
 
 			// Set the width / height of the cell container to exactly what we need
-			VisualElement gridCellContainer = gridContainer.Q("gridCellContainer");
+			VisualElement gridCellContainer;
+			if(_type == 0)
+			{
+				gridCellContainer = gridContainer.Q("gridCellContainer");
+			}
+			else
+			{
+                gridCellContainer = gridContainer.Q("gridCellFakeContainer");
+            }
+
 			SetCellContainerSize(gridCellContainer, levelType, xCells, yCells, cellWidth, cellHeight);
 
 			for (int y = 0; y < yCells; y++)
 			{
-				grid.Add(new List<GridCell>());
+                _grid.Add(new List<GridCell>());
 
 				for (int x = 0; x < xCells; x++)
 				{
-					GridCell gridCell = grid[y][x];
+					GridCell gridCell = _grid[y][x];
 
 					Image cellImage = gridCell.imageField;
 
@@ -990,9 +1037,20 @@ namespace BBG.Blocks
 		/// <summary>
 		/// Invoked when the mouse hovers over the grid cell container
 		/// </summary>
-		private void OnMouseMoved(MouseMoveEvent evt)
+		/// 
+		private void OnMouseMovedGrid(MouseMoveEvent evt)
 		{
-			GridCell gridCell = GetClosestCell(evt.localMousePosition);
+			OnMouseMoved(evt, grid);
+        }
+
+        private void OnMouseMovedGridFake(MouseMoveEvent evt)
+        {
+            OnMouseMoved(evt, gridFake);
+        }
+
+        private void OnMouseMoved(MouseMoveEvent evt, List<List<GridCell>> _grid)
+		{
+			GridCell gridCell = GetClosestCell(evt.localMousePosition, _grid);
 
 			// Only update if the hover target has changed
 			if (hoveredGridCell != gridCell)
@@ -1030,9 +1088,20 @@ namespace BBG.Blocks
 		/// <summary>
 		/// Invoked when the mouse clicks on the grid cell container
 		/// </summary>
-		private void OnMouseDown(MouseDownEvent evt)
+		/// 
+		private void OnMouseDownGrid(MouseDownEvent evt)
 		{
-			SetCellToSelectedShape(GetClosestCell(evt.localMousePosition));
+			OnMouseDown(evt, grid);
+        }
+
+        private void OnMouseDownGridFake(MouseDownEvent evt)
+        {
+            OnMouseDown(evt, gridFake);
+        }
+
+        private void OnMouseDown(MouseDownEvent evt, List<List<GridCell>> _grid)
+		{
+			SetCellToSelectedShape(GetClosestCell(evt.localMousePosition, _grid));
 
 			isDragging = true;
 		}
@@ -1068,15 +1137,15 @@ namespace BBG.Blocks
 		/// <summary>
 		/// Gets the closest grid cell to the given mouse position
 		/// </summary>
-		private GridCell GetClosestCell(Vector2 mousePosition)
+		private GridCell GetClosestCell(Vector2 mousePosition, List<List<GridCell>> _grid)
 		{
             if (LevelType == LevelData.LevelType.Triangle)
-                return GetClosestCell_Triangle(mousePosition);
+                return GetClosestCell_Triangle(mousePosition, _grid);
 
-            return GetClosestCell_Default(mousePosition);
+            return GetClosestCell_Default(mousePosition, _grid);
         }
 
-        private GridCell GetClosestCell_Triangle(Vector2 mousePosition)
+        private GridCell GetClosestCell_Triangle(Vector2 mousePosition, List<List<GridCell>> _grid)
         {
             int xCells = XCells;
             int yCells = YCells;
@@ -1089,7 +1158,7 @@ namespace BBG.Blocks
             {
                 for (int x = 0; x < xCells; x++)
                 {
-                    Image gridCell = grid[y][x].imageField;
+                    Image gridCell = _grid[y][x].imageField;
 
                     float cellWidth = gridCell.style.width.value.value;
                     float cellHeight = gridCell.style.height.value.value;
@@ -1117,10 +1186,10 @@ namespace BBG.Blocks
                 }
             }
 
-            return grid[targetY][targetX];
+            return _grid[targetY][targetX];
         }
 
-        private GridCell GetClosestCell_Default(Vector2 mousePosition)
+        private GridCell GetClosestCell_Default(Vector2 mousePosition, List<List<GridCell>> _grid)
         {
             int xCells = XCells;
             int yCells = YCells;
@@ -1134,7 +1203,7 @@ namespace BBG.Blocks
             {
                 for (int x = 0; x < xCells; x++)
                 {
-                    Image gridCell = grid[y][x].imageField;
+                    Image gridCell = _grid[y][x].imageField;
                     Vector2 cellMiddle = gridCell.transform.position;
 
                     float w = gridCell.style.width.value.value;
@@ -1158,7 +1227,7 @@ namespace BBG.Blocks
                 }
             }
 
-            return grid[targetY][targetX];
+            return _grid[targetY][targetX];
         }
 
         private void SetHover(GridCell gridCell, bool isHovered)
@@ -1308,18 +1377,18 @@ namespace BBG.Blocks
 		/// <summary>
 		/// Re-sets the tintColor on all GridCell imageFiles
 		/// </summary>
-		private void UpdateGridCellColors()
+		private void UpdateGridCellColors(List<List<GridCell>> _grid)
 		{
 			int xCells = XCells;
 			int yCells = YCells;
 
 			for (int y = 0; y < yCells; y++)
 			{
-				grid.Add(new List<GridCell>());
+                _grid.Add(new List<GridCell>());
 
 				for (int x = 0; x < xCells; x++)
 				{
-					GridCell	gridCell	= grid[y][x];
+					GridCell	gridCell	= _grid[y][x];
 					Image		cellImage	= gridCell.imageField;
 
 					if (gridCell.shapeIndex >= shapeColors.Count)
@@ -1359,21 +1428,25 @@ namespace BBG.Blocks
 		private void ExportClicked()
 		{
 			List<List<int>> gridCellValues = new List<List<int>>();
+			List<List<int>> gridCellFakeValues = new List<List<int>>();
 
-			// Convert the grid to the proper format for exporting
-			for (int y = 0; y < YCells; y++)
+            // Convert the grid to the proper format for exporting
+            for (int y = 0; y < YCells; y++)
 			{
 				gridCellValues.Add(new List<int>());
+				gridCellFakeValues.Add(new List<int>());
 
-				for (int x = 0; x < XCells; x++)
+                for (int x = 0; x < XCells; x++)
 				{
 					GridCell gridCell = grid[y][x];
+					GridCell gridCellFake = gridFake[y][x];
 
-					gridCellValues[y].Add(gridCell.shapeIndex);
-				}
+                    gridCellValues[y].Add(gridCell.shapeIndex);
+                    gridCellFakeValues[y].Add(gridCellFake.shapeIndex);
+                }
 			}
 
-			Export(gridCellValues);
+			Export(gridCellValues, gridCellFakeValues);
 
 			AssetDatabase.Refresh();
 		}
@@ -1381,7 +1454,7 @@ namespace BBG.Blocks
 		/// <summary>
 		/// Exports the level text file
 		/// </summary>
-		private void Export(List<List<int>> gridCellValues)
+		private void Export(List<List<int>> gridCellValues, List<List<int>> gridCellFakeValues)
 		{
 			int yCells = gridCellValues.Count;
 			int xCells = gridCellValues[0].Count;
@@ -1438,7 +1511,7 @@ namespace BBG.Blocks
 
 		private void AutoFill()
 		{
-			ClearShapes();
+            ClearAllShapes();
 
 			List<List<int>> cellTypes = GetAllCellTypes();
 
@@ -1488,7 +1561,7 @@ namespace BBG.Blocks
 			AutoFill();
 		}
 
-		private void AutoGenerationWorkerFinished()
+		private void AutoGenerationWorkerFinished(List<List<GridCell>> _grid)
 		{
 			List<List<int>> generatedGrid = autoGenerationWorker.GetGrid();
 
@@ -1496,7 +1569,7 @@ namespace BBG.Blocks
 			{
 				numLevelsLeftToGenerate--;
 
-				Export(generatedGrid);
+				Export(generatedGrid, new List<List<int>>());
 
 				if (numLevelsLeftToGenerate > 0)
 				{
@@ -1511,7 +1584,7 @@ namespace BBG.Blocks
 				{
 					for (int x = 0; x < XCells; x++)
 					{
-						GridCell gridCell = grid[y][x];
+						GridCell gridCell = _grid[y][x];
 
 						int cell = generatedGrid[y][x];
 
@@ -1524,7 +1597,7 @@ namespace BBG.Blocks
 					}
 				}
 
-				UpdateGridCellColors();
+				UpdateGridCellColors(_grid);
 			}
 
 			StopAutoGeneration();

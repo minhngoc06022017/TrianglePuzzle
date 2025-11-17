@@ -12,13 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1d48b036f85bb4427ba3f7f744deb38b, type: 3}
   m_Name: LevelCreatorData
   m_EditorClassIdentifier: 
-  levelType: 1
+  levelType: 2
   rotateHexagon: 0
-  xCells: 8
-  yCells: 8
-  numShapes: 3
+  xCells: 4
+  yCells: 4
+  numShapes: 5
   filename: 
-  outputFolderAssetPath: Assets/Blocks/AssetFiles/LevelFiles/Triangle/Impossible
+  outputFolderAssetPath: Assets/Blocks/AssetFiles/LevelFiles/Hexagon/Beginner
   minShapeSize: 1
-  maxShapeSize: 22
+  maxShapeSize: 12
   numLevels: 25

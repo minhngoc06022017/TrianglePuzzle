@@ -22,6 +22,10 @@
 			<engine:Button name="resetGridButton" text="Reset Grid" />
         </engine:Box>
 
+		<engine:Box class="box">
+            <engine:VisualElement name="gridFakeContainer" class="grid-container" />
+        </engine:Box>
+
 		<engine:Box class="box" name="exportBox">
 			<engine:TextElement text="Export" />
 			<engine:VisualElement class="line" />
