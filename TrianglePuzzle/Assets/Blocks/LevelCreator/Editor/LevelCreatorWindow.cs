@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
@@ -392,6 +393,7 @@ namespace BBG.Blocks
 
             // Parse grid
             List<List<int>> grid = new List<List<int>>();
+            List<List<int>> gridFake = new List<List<int>>();
 
             for (int y = 0; y < yCells; y++)
             {
@@ -403,8 +405,22 @@ namespace BBG.Blocks
                 grid.Add(row);
             }
 
+			int _checkIndex = index + 1;
+			if(_checkIndex < parts.Length)
+			{
+                for (int y = 0; y < yCells; y++)
+                {
+                    List<int> row = new List<int>();
+                    for (int x = 0; x < xCells; x++)
+                    {
+                        row.Add(int.Parse(parts[index++]));
+                    }
+                    gridFake.Add(row);
+                }
+            }
+
             // Cập nhật lại UI & Data
-            UpdateDataMap(LevelType, RotateHexagon, xCells, yCells, grid);
+            UpdateDataMap(LevelType, RotateHexagon, xCells, yCells, grid, gridFake);
 
             // Update UI fields
             XCellsField.value = xCells;
@@ -412,7 +428,7 @@ namespace BBG.Blocks
             RotateHexagonField.value = RotateHexagon;
         }
 
-        private void UpdateDataMap(LevelData.LevelType levelType, bool rotateHex, int xCells, int yCells, List<List<int>> gridValues)
+        private void UpdateDataMap(LevelData.LevelType levelType, bool rotateHex, int xCells, int yCells, List<List<int>> gridValues, List<List<int>> gridFakeValues)
         {
             LevelCreatorData.Instance.levelType = levelType;
             LevelCreatorData.Instance.rotateHexagon = rotateHex;
@@ -420,7 +436,7 @@ namespace BBG.Blocks
             LevelCreatorData.Instance.yCells = yCells;
 
 			ResetGrid(0, gridValues);
-			ResetGrid(1);
+			ResetGrid(1, gridFakeValues);
         }
 
         private void RefreshLevelListUI()
@@ -1471,7 +1487,15 @@ namespace BBG.Blocks
 				}
 			}
 
-			string outputFolderAssetPath	= GetOutputFolderAssetPath();
+            for (int y = 0; y < yCells; y++)
+            {
+                for (int x = 0; x < xCells; x++)
+                {
+                    contents += "," + gridCellFakeValues[y][x];
+                }
+            }
+
+            string outputFolderAssetPath	= GetOutputFolderAssetPath();
 			string outputFileAssetPath		= GetOutputFileAssetPath(outputFolderAssetPath);
 			string outputFileFullPath		= Application.dataPath + outputFileAssetPath.Remove(0, "Assets".Length);
 
